@@ -1,9 +1,9 @@
 /*******************************************************************************
 
- M95M01 SPI EEPROM library
+ M95M04 SPI EEPROM library
  -------------------------
  
- M95M01.cpp - M95M01 class implementation file
+ M95M04.cpp - M95M04 class implementation file
  
  Code written by Stefan Dzisiewski-Smith.
  
@@ -27,41 +27,51 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
+ Mito-L:
+ @TIMING control is according to the documentation of the M95M04, for V_cc > 2.5V 
+
 *******************************************************************************/
 
-#include "M95M01.h"
+#include "M95M04.h"
 #include <Arduino.h>
 
-const uint8_t CMD_WRSR  = 0x01;  // write status register
-const uint8_t CMD_WRITE = 0x02;  // write to EEPROM
-const uint8_t CMD_READ  = 0x03;  // read from EEPROM
-const uint8_t CMD_WRDI  = 0x04;  // write disable
-const uint8_t CMD_RDSR  = 0x05;  // read status register
-const uint8_t CMD_WREN  = 0x06;  // write enable
-
-const uint8_t BIT_WIP   = 0;	 // write in progress
-const uint8_t BIT_WEL   = 1;	 // write enable latch
-const uint8_t BIT_BP0   = 2;	 // block protect 0
-const uint8_t BIT_BP1   = 3;	 // block protect 1
-const uint8_t BIT_SRWD  = 7;	 // status register write disable
-
-const uint8_t WRITE_TIMEOUT_MS = 10; // a write should only ever take 5 ms max
-
-M95M01_t::M95M01_t(){
+M95M04_t::M95M04_t(){
 }
 
-void M95M01_t::begin(uint8_t CS_pin, uint32_t speed_Hz){
+void M95M04_t::begin(uint8_t CS_pin, uint32_t speed_Hz){
 	this->CS_pin = CS_pin;
 	pinMode(this->CS_pin, OUTPUT);
 	digitalWrite(this->CS_pin, HIGH);
 	SPI.begin();
 	// SPI_MODE0 and SPI_MODE3 are both valid - SCK idles low with 0, HIGH with 3
 	// idling high reduces power consumption if using a pullup on SCK
-	SPI.beginTransaction(SPISettings(speed_Hz, MSBFIRST, SPI_MODE3)); 
+	SPI.beginTransaction(SPISettings(speed_Hz, MSBFIRST, SPI_MODE0)); 
+}
+
+inline void M95M04_t::write_enable(){
+	//@TIMING: t_CHSL > 30ns, t_SLCH > 30ns
+	digitalWrite(CS_pin, LOW);
+	//@TIMING: t_DVCH > 10ns
+	SPI.transfer(CMD_WREN);
+	//@TIMING: t_CHDX > 10ns
+	digitalWrite(CS_pin, HIGH);
+	//@TIMING: t_SHSL > 40ns
+}
+
+inline void M95M04_t::write_disable(){
+	digitalWrite(CS_pin, LOW);
+	SPI.transfer(CMD_WRDI);
+	digitalWrite(CS_pin, HIGH);
+}
+
+uint8_t read_status_register(){
+	digitalWrite(CS_pin, LOW);
+	SPI.transfer(CMD_RDSR);
+	digitalWrite(CS_pin, HIGH);
 }
 
 
-uint8_t M95M01_t::write_byte(uint32_t address, uint8_t value){
+uint8_t M95M04_t::write_byte(uint32_t address, uint8_t value){
 
 	// returns 0 is the write was successful
 	// returns 1 if the write timed out and hence was not successful
@@ -94,7 +104,7 @@ uint8_t M95M01_t::write_byte(uint32_t address, uint8_t value){
 	return(0); // success
 }
 
-uint8_t M95M01_t::read_byte(uint32_t address){
+uint8_t M95M04_t::read_byte(uint32_t address){
 
 	// returns the value of the requested byte if the read was successful
 	// returns 0 if the read timed out and was not successful (ambiguous)
@@ -124,7 +134,7 @@ uint8_t M95M01_t::read_byte(uint32_t address){
 	return(scratch);
 }
 
-uint8_t M95M01_t::write_array(uint32_t address, uint8_t value_array[], const uint32_t array_length){
+uint8_t M95M04_t::write_array(uint32_t address, uint8_t value_array[], const uint32_t array_length){
 
 	// returns 0 is the write was successful
 	// returns 1 if the write timed out and hence was not successful
@@ -171,7 +181,7 @@ uint8_t M95M01_t::write_array(uint32_t address, uint8_t value_array[], const uin
 	return(0); // success
 }
 
-uint8_t M95M01_t::read_array(uint32_t address, uint8_t value_array[], const uint32_t array_length){
+uint8_t M95M04_t::read_array(uint32_t address, uint8_t value_array[], const uint32_t array_length){
 
 	// returns 0 is the read was successful
 	// returns 1 if the read timed out and hence was not successful
@@ -204,7 +214,7 @@ uint8_t M95M01_t::read_array(uint32_t address, uint8_t value_array[], const uint
 	return(0);
 }
 
-uint32_t M95M01_t::page(uint32_t address){
+uint32_t M95M04_t::page(uint32_t address){
 	if(address < (uint32_t)page_size){
 		return(0);
 	} else {
@@ -212,11 +222,11 @@ uint32_t M95M01_t::page(uint32_t address){
 	}
 }
 
-uint8_t M95M01_t::page_address(uint32_t address){
+uint8_t M95M04_t::page_address(uint32_t address){
 
 	return(address % page_size);
 
 }
 
 
-M95M01_t M95M01 = M95M01_t();
+M95M04_t M95M04 = M95M04_t();
