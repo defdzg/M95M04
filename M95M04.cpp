@@ -64,168 +64,223 @@ inline void M95M04_t::write_disable(){
 	digitalWrite(CS_pin, HIGH);
 }
 
-uint8_t read_status_register(){
-	digitalWrite(CS_pin, LOW);
-	SPI.transfer(CMD_RDSR);
-	digitalWrite(CS_pin, HIGH);
-}
-
-
-uint8_t M95M04_t::write_byte(uint32_t address, uint8_t value){
-
-	// returns 0 is the write was successful
-	// returns 1 if the write timed out and hence was not successful
-
+/**
+ * @brief check the Write In Progress bit of the status register
+ * 
+ * this bit should never be longer than 5ms in use, and it should
+ * be checked before any writing operation, 
+ * because if this bit is HIGH, 
+ * another writing operation is in progress 
+ * and the new one cannot be processed
+ * 
+ * returns 0 if the write is finished before the timeout
+ * returns 1 if the write timed out and hence was not successful
+ */
+uint8_t M95M04_t::check_WIP(){
 	unsigned long start_time_ms;
 	uint8_t scratch;
 
-	digitalWrite(this->CS_pin, LOW);
+	digitalWrite(CS_pin, LOW);
 	SPI.transfer(CMD_RDSR);
-	start_time_ms = millis();	
+	start_time_ms = millis();
 
 	do{
-		scratch = SPI.transfer(0); // dummy to clock out data
+		scratch = SPI.transfer(DUMMY8_0); // dummy to clock out data
 	} while ((bitRead(scratch, BIT_WIP) == 1) && (millis() < start_time_ms + WRITE_TIMEOUT_MS));
-	digitalWrite(this->CS_pin, HIGH); 
+	digitalWrite(CS_pin, HIGH); 
 
 	if(bitRead(scratch, BIT_WIP) == 1){ // if we're still busy writing, something has gone wrong;
 		return(1); // timeout
 	}
-
-	digitalWrite(this->CS_pin, LOW);
-	SPI.transfer(CMD_WREN);
-	digitalWrite(this->CS_pin, HIGH); 
-	digitalWrite(this->CS_pin, LOW);
-	SPI.transfer16((CMD_WRITE<<8) | (0x01 & (address >> 16))); // write instruction + top bit of 17-bit address
-	SPI.transfer16(address & 0xFFFF); // bottom 16 bits of 17-bit address
-	SPI.transfer(value);
-	digitalWrite(this->CS_pin, HIGH);
-
-	return(0); // success
+	else
+	{
+		return(0);
+	}
 }
 
+/**
+ * @brief writes an 8-bit value in the byte address
+ * 
+ * returns 0 if the write was successful
+ * returns 1 if the write timed out and hence was not successful
+ * 
+ */
+uint8_t M95M04_t::write_byte(uint32_t address, uint8_t value){
+
+	if (check_WIP()==0)
+	{
+		write_enable();
+		uint16_t instruction1, instruction2;
+		form_instructions(CMD_READ, address, &instruction1, &instruction2);
+
+		digitalWrite(CS_pin, LOW);
+		SPI.transfer16(instruction1);
+		SPI.transfer16(instruction2);
+		SPI.transfer(value);
+		digitalWrite(CS_pin, HIGH);
+		return(0); // success
+	}
+	else
+	{
+		return(1); //something has gone wrong
+	}
+	
+}
+
+/**
+ * @brief reads an 8-bit value from the byte address
+ * 
+ * returns the value of the requested byte if the read was successful
+ * returns 0 if the read timed out and was not successful (ambiguous)
+ * 
+ */
 uint8_t M95M04_t::read_byte(uint32_t address){
 
-	// returns the value of the requested byte if the read was successful
-	// returns 0 if the read timed out and was not successful (ambiguous)
+	if (check_WIP()==0)
+	{
+		uint16_t instruction1, instruction2;
+		form_instructions(CMD_READ, address, &instruction1, &instruction2);
 
-	unsigned long start_time_ms;
-	uint8_t scratch;
+		digitalWrite(CS_pin, LOW);
+		SPI.transfer16(instruction1);
+		SPI.transfer16(instruction2);
+		uint8_t scratch = SPI.transfer(DUMMY8_0); // dummy payload to clock data out
+		digitalWrite(CS_pin, HIGH);
 
-	digitalWrite(this->CS_pin, LOW);
-	SPI.transfer(CMD_RDSR);
-	start_time_ms = millis();	
-
-	do{
-		scratch = SPI.transfer(0); // dummy to clock out data
-	} while ((bitRead(scratch, BIT_WIP) == 1) && (millis() < start_time_ms + WRITE_TIMEOUT_MS));
-	digitalWrite(this->CS_pin, HIGH); 
-
-	if(bitRead(scratch, BIT_WIP) == 1){ // if we're still busy writing, something has gone wrong;
-		return(0); // timeout
+		return(scratch); // success
 	}
-
-	digitalWrite(this->CS_pin, LOW);
-	SPI.transfer16((CMD_READ<<8) | (0x01 & (address >> 16))); // write instruction + top bit of 17-bit address
-	SPI.transfer16(address & 0xFFFF); // bottom 16 bits of 8-bit address
-	scratch = SPI.transfer(0x00); // dummy payload to clock data out
-	digitalWrite(this->CS_pin, HIGH);
-
-	return(scratch);
+	else
+	{
+		return(0); //something has gone wrong
+	}
 }
 
-uint8_t M95M04_t::write_array(uint32_t address, uint8_t value_array[], const uint32_t array_length){
 
-	// returns 0 is the write was successful
-	// returns 1 if the write timed out and hence was not successful
+/**
+ * @brief writes an array of 8-bit values starting from the byte address
+ * switches to the next page automatically if necessary
+ * 
+ * returns 0 if the write was successful
+ * returns 1 if the write timed out and hence was not successful
+ * returns 2 if the end of memory array is reached
+ * 
+ */
+uint8_t M95M04_t::write_array(uint32_t address, uint8_t * value_array, const uint32_t array_length){
 
 	unsigned long start_time_ms;
 	uint8_t scratch;
-	uint32_t i; // page counter
-	uint32_t j = address; // byte address counter
+	uint32_t i; 					// page counter
+	uint32_t j = address; 			// byte address counter
 	uint32_t page_start_address;
 
 	for(i=page(address); i<=page(address+array_length-1); i++){	
 
+		if (i>=num_pages){
+			return(2); //eeprom out of memory
+		}
+
+		// for the first page, start at the given address in case we're 
+		//    dropping in to the middle of a page
+		// else we start at the beginning of the current page
 		if(i == page(address)){
-			page_start_address = address; // for the first page, start at the given address in case we're dropping in to the middle of a page
+			page_start_address = address;
 		} else {
-			page_start_address = i*page_size; // else we start at the beginning of the current page
+			page_start_address = i*page_size_bytes;
 		}
 
-		digitalWrite(this->CS_pin, LOW);
-		SPI.transfer(CMD_RDSR);
-		start_time_ms = millis();	
+		if (check_WIP()==0)
+		{
 
-		do{
-			scratch = SPI.transfer(0); // dummy to clock out data
-		} while ((bitRead(scratch, BIT_WIP) == 1) && (millis() < start_time_ms + WRITE_TIMEOUT_MS));
-		digitalWrite(this->CS_pin, HIGH); 
+			write_enable();
+			uint16_t instruction1, instruction2;
+			form_instructions(CMD_WRITE, page_start_address, &instruction1, &instruction2);
 
-		if(bitRead(scratch, BIT_WIP) == 1){ // if we're still busy writing, something has gone wrong;
-			return(1); // timeout
+			digitalWrite(CS_pin, LOW);
+			SPI.transfer16(instruction1);
+			SPI.transfer16(instruction2);
+			do{
+				SPI.transfer(value_array[j-address]);
+			} while(page_address(++j)!=0);
+			digitalWrite(this->CS_pin, HIGH);
 		}
-
-		digitalWrite(this->CS_pin, LOW);
-		SPI.transfer(CMD_WREN);
-		digitalWrite(this->CS_pin, HIGH); 
-		digitalWrite(this->CS_pin, LOW);
-		SPI.transfer16((CMD_WRITE<<8) | (0x01 & (page_start_address >> 16))); // write instruction + top bit of 17-bit address
-		SPI.transfer16(page_start_address & 0xFFFF); // bottom 16 bits of 17-bit address
-		do{
-			SPI.transfer(value_array[j-address]);
-		} while(page_address(++j)!=0);
-		digitalWrite(this->CS_pin, HIGH);
+		else
+		{
+			return(1);
+		}
 	}
 
 	return(0); // success
 }
 
-uint8_t M95M04_t::read_array(uint32_t address, uint8_t value_array[], const uint32_t array_length){
+/**
+ * @brief reads an array of 8-bit values starting from the byte address
+ * switches to the next page automatically if necessary
+ * 
+ * returns 0 if reading was successful
+ * returns 1 if reading timed out and hence was not successful
+ * 
+ */
+uint8_t M95M04_t::read_array(uint32_t address, uint8_t * value_array, const uint32_t array_length){
 
-	// returns 0 is the read was successful
-	// returns 1 if the read timed out and hence was not successful
+	if (check_WIP()==0)
+	{
+		uint16_t instruction1, instruction2;
+		form_instructions(CMD_READ, address, &instruction1, &instruction2);
 
-	unsigned long start_time_ms = millis();
-	uint8_t scratch;
-	uint32_t j; // byte address counter
+		digitalWrite(CS_pin, LOW);
+		SPI.transfer16(instruction1);
+		SPI.transfer16(instruction2);
+		for(int j = 0; j < array_length; j++){
+			value_array[j] = SPI.transfer(DUMMY8_0); // dummy payload to clock data out
+		}
+		digitalWrite(this->CS_pin, HIGH);
 
-	digitalWrite(this->CS_pin, LOW);
-	SPI.transfer(CMD_RDSR);
-	start_time_ms = millis();	
-
-	do{
-		scratch = SPI.transfer(0); // dummy to clock out data
-	} while ((bitRead(scratch, BIT_WIP) == 1) && (millis() < start_time_ms + WRITE_TIMEOUT_MS));
-	digitalWrite(this->CS_pin, HIGH); 
-
-	if(bitRead(scratch, BIT_WIP) == 1){ // if we're still busy writing, something has gone wrong;
-		return(1); // timeout
+		return(0);
 	}
-
-	digitalWrite(this->CS_pin, LOW);
-	SPI.transfer16((CMD_READ<<8) | (0x01 & (address >> 16))); // write instruction + top bit of 17-bit address
-	SPI.transfer16(address & 0xFFFF); // bottom 16 bits of 17-bit address
-	for(j=address; j<address+array_length; j++){
-		value_array[j-address] = SPI.transfer(0x00); // dummy payload to clock data out
+	else
+	{
+		return(1); //something has gone wrong
 	}
-	digitalWrite(this->CS_pin, HIGH);
-
-	return(0);
 }
 
+/** 
+ * @brief returns the number of the page of the given address
+ * 
+ */
 uint32_t M95M04_t::page(uint32_t address){
-	if(address < (uint32_t)page_size){
+	if(address < (uint32_t)page_size_bytes){
 		return(0);
 	} else {
-		return(address / page_size);
+		return(address / page_size_bytes);
 	}
 }
 
+/** 
+ * @brief returns the local address on the page from the given address
+ * 
+ */
 uint8_t M95M04_t::page_address(uint32_t address){
+	return(address % page_size_bytes);
+}
 
-	return(address % page_size);
-
+/** 
+ * @brief builds 2 16-bit commands to be sent on the MOSI line
+ * 
+ * @param command uint8_t, the instruction code
+ * @param address uint32_t, address
+ * @param instr1 * uint16_t, pointer to the first instruction holder
+ * @param instr2 * uint16_t, pointer to the second instruction holder
+ */
+void M95M04_t::form_instructions(
+		uint8_t command,
+		uint32_t address,
+		uint16_t * instr1,
+		uint16_t * instr2)
+{
+	// read instruction code + 3 bits of the upper address byte
+	*instr1 =  ((uint16_t)command << 8) | (0x07 & (address >> 16));
+	// middle and lower address bytes
+	*instr2 = address & 0xFFFF;
 }
 
 

@@ -46,9 +46,9 @@ class M95M04_t
 		uint8_t read_byte(uint32_t address);
 		uint8_t write_array(uint32_t address, uint8_t value_array[], const uint32_t array_length);
 		uint8_t read_array(uint32_t address, uint8_t value_array[], const uint32_t array_length);
-		static const uint16_t page_size = 512;  // bytes per page
+		static const uint16_t page_size_bytes = 512;  // bytes per page
 		static const uint16_t num_pages = 1024;
-		static const uint32_t num_bytes = (uint32_t)page_size*(uint32_t)num_pages;
+		static const uint32_t num_bytes = (uint32_t)page_size_bytes*(uint32_t)num_pages;
 
 
 	// functions / variables internal to the M95M04_t class - you cannot access these externally
@@ -59,8 +59,10 @@ class M95M04_t
 		uint8_t CS_pin;
 
 		//dummies for SPI transfer
-		const uint8_t DUMMY_0 = 0b00000000;
-		const uint8_t DUMMY_255 = 0b11111111;
+		const uint8_t DUMMY8_0 = 0x00;
+		const uint8_t DUMMY8_MAX = 0xff;
+		const uint16_t DUMMY16_0 = 0x0000;
+		const uint16_t DUMMY16_MAX = 0xffff;
 
 		//Instruction codes
 		const uint8_t CMD_WREN  = 0b00000110;  // write enable
@@ -81,17 +83,18 @@ class M95M04_t
 		const uint8_t BIT_BP1   = 3;	 // block protect 1
 		const uint8_t BIT_SRWD  = 7;	 // status register write disable
 
-		const uint8_t WRITE_TIMEOUT_MS = 10; // a write should only ever take 5 ms max
-
-		//helper functions to compute page / page address in memory
-		uint32_t page(uint32_t address);
-		uint8_t page_address(uint32_t address);
+		const uint8_t WRITE_TIMEOUT_MS = 6; // a write should only ever take 5 ms max
 
 		//hidden internal functions used to implement the external ones
 		void write_enable();
 		void write_disable();
-		uint8_t read_status_register();
+		uint8_t check_WIP(); // check write in progress bit of the status register
 
+		//helper functions to compute page / page address in memory
+		uint32_t page(uint32_t address);
+		uint8_t page_address(uint32_t address);
+		void form_instructions(uint8_t command, uint32_t address, 
+		uint16_t * instr1, uint16_t * instr2);
 
 };
 
