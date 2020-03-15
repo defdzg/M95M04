@@ -41,11 +41,18 @@ class M95M04_t
 {		
 	public:
 		M95M04_t();
-		void begin(uint8_t CS_pin, uint32_t speed_Hz);
+		void begin(uint8_t CS_pin, uint8_t WP_pin, uint8_t HOLD_pin, uint32_t speed_Hz);
 		uint8_t write_byte(uint32_t address, uint8_t value);
 		uint8_t read_byte(uint32_t address);
-		uint8_t write_array(uint32_t address, uint8_t value_array[], const uint32_t array_length);
-		uint8_t read_array(uint32_t address, uint8_t value_array[], const uint32_t array_length);
+		uint8_t write_array(uint32_t address, uint8_t * value_array, const uint32_t array_length);
+		uint8_t read_array(uint32_t address, uint8_t * value_array, const uint32_t array_length);
+		uint8_t write_idpage_byte(uint32_t address, uint8_t value);
+		uint8_t read_idpage_byte(uint32_t address);
+		uint8_t write_idpage_array(uint32_t address, uint8_t * value, const uint32_t array_length);
+		uint8_t read_idpage_array(uint32_t address, uint8_t * value_array, const uint32_t array_length);
+		uint8_t read_idpage_lock_status();
+
+		//constants
 		static const uint16_t page_size_bytes = 512;  // bytes per page
 		static const uint16_t num_pages = 1024;
 		static const uint32_t num_bytes = (uint32_t)page_size_bytes*(uint32_t)num_pages;
@@ -57,6 +64,8 @@ class M95M04_t
 		// internal helper functions and variables
 		// not exposed externally to the user
 		uint8_t CS_pin;
+		uint8_t WP_pin;
+		uint8_t HOLD_pin;
 
 		//dummies for SPI transfer
 		const uint8_t DUMMY8_0 = 0x00;
@@ -89,6 +98,9 @@ class M95M04_t
 		void write_enable();
 		void write_disable();
 		uint8_t check_WIP(); // check write in progress bit of the status register
+		uint8_t software_lock_memory(uint8_t lock_level);
+		uint8_t hardware_lock_memory(uint8_t lock_level);
+		uint8_t unlock_memory();
 
 		//helper functions to compute page / page address in memory
 		uint32_t page(uint32_t address);
