@@ -36,7 +36,6 @@
 
 #include <SPI.h>
 
-#define SPICLOCK 4000000
 
 class M95M04_t
 {		

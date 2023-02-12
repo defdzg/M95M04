@@ -52,6 +52,10 @@ void M95M04_t::begin(uint8_t CS_pin, uint8_t WP_pin, uint8_t HOLD_pin, uint32_t 
 	digitalWrite(this->CS_pin, HIGH);
 	digitalWrite(this->WP_pin, HIGH);
 	digitalWrite(this->HOLD_pin, HIGH);
+	SPI.begin();
+	// SPI_MODE0 and SPI_MODE3 are both valid - SCK idles LOW with 0, HIGH with 3
+	// idling high reduces power consumption if using a pullup on SCK
+	SPI.beginTransaction(SPISettings(speed_Hz, MSBFIRST, SPI_MODE0));
 }
 
 /**
@@ -69,14 +73,11 @@ uint8_t M95M04_t::write_byte(uint32_t address, uint8_t value){
 		uint16_t instruction1, instruction2;
 		form_instructions(CMD_READ, address, &instruction1, &instruction2);
 
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 		digitalWrite(CS_pin, LOW);
 		SPI.transfer16(instruction1);
 		SPI.transfer16(instruction2);
 		SPI.transfer(value);
 		digitalWrite(CS_pin, HIGH);
-		SPI.endTransaction();
-
 		return(0); // success
 	}
 	else
@@ -100,13 +101,11 @@ uint8_t M95M04_t::read_byte(uint32_t address){
 		uint16_t instruction1, instruction2;
 		form_instructions(CMD_READ, address, &instruction1, &instruction2);
 
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 		digitalWrite(CS_pin, LOW);
 		SPI.transfer16(instruction1);
 		SPI.transfer16(instruction2);
 		uint8_t scratch = SPI.transfer(DUMMY8_0); // dummy payload to clock data out
 		digitalWrite(CS_pin, HIGH);
-		SPI.endTransaction();
 
 		return(scratch); // success
 	}
@@ -123,7 +122,7 @@ uint8_t M95M04_t::read_byte(uint32_t address){
  * 
  * returns 0 if the write was successful
  * returns 1 if the write timed out and hence was not successful
- * returns 2 if the end of	 memory array is reached
+ * returns 2 if the end of memory array is reached
  * 
  */
 uint8_t M95M04_t::write_array(uint32_t address, uint8_t * value_array, const uint32_t array_length){
@@ -154,7 +153,6 @@ uint8_t M95M04_t::write_array(uint32_t address, uint8_t * value_array, const uin
 			uint16_t instruction1, instruction2;
 			form_instructions(CMD_WRITE, page_start_address, &instruction1, &instruction2);
 
-			SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 			digitalWrite(CS_pin, LOW);
 			SPI.transfer16(instruction1);
 			SPI.transfer16(instruction2);
@@ -162,7 +160,6 @@ uint8_t M95M04_t::write_array(uint32_t address, uint8_t * value_array, const uin
 				SPI.transfer(value_array[j-address]);
 			} while(page_address(++j)!=0);
 			digitalWrite(CS_pin, HIGH);
-			SPI.endTransaction();
 		}
 		else
 		{
@@ -188,7 +185,6 @@ uint8_t M95M04_t::read_array(uint32_t address, uint8_t * value_array, const uint
 		uint16_t instruction1, instruction2;
 		form_instructions(CMD_READ, address, &instruction1, &instruction2);
 
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 		digitalWrite(CS_pin, LOW);
 		SPI.transfer16(instruction1);
 		SPI.transfer16(instruction2);
@@ -196,7 +192,6 @@ uint8_t M95M04_t::read_array(uint32_t address, uint8_t * value_array, const uint
 			value_array[j] = SPI.transfer(DUMMY8_0); // dummy payload to clock data out
 		}
 		digitalWrite(CS_pin, HIGH);
-		SPI.endTransaction();
 
 		return(0);
 	}
@@ -224,14 +219,11 @@ uint8_t M95M04_t::write_idpage_byte(uint32_t address, uint8_t value){
 		uint16_t instruction1, instruction2;
 		form_instructions(CMD_WRID, address, &instruction1, &instruction2);
 
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 		digitalWrite(CS_pin, LOW);
 		SPI.transfer16(instruction1);
 		SPI.transfer16(instruction2);
 		SPI.transfer(value);
 		digitalWrite(CS_pin, HIGH);
-		SPI.endTransaction();
-
 		return(0); // success
 	}
 	else
@@ -257,13 +249,11 @@ uint8_t M95M04_t::read_idpage_byte(uint32_t address){
 		uint16_t instruction1, instruction2;
 		form_instructions(CMD_RDID, address, &instruction1, &instruction2);
 
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 		digitalWrite(CS_pin, LOW);
 		SPI.transfer16(instruction1);
 		SPI.transfer16(instruction2);
 		uint8_t scratch = SPI.transfer(DUMMY8_0); // dummy payload to clock data out
 		digitalWrite(CS_pin, HIGH);
-		SPI.endTransaction();
 
 		return(scratch); // success
 	}
@@ -289,7 +279,6 @@ uint8_t M95M04_t::write_idpage_array(uint32_t address, uint8_t * value_array, co
 		uint16_t instruction1, instruction2;
 		form_instructions(CMD_WRID, address, &instruction1, &instruction2);
 
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 		digitalWrite(CS_pin, LOW);
 		SPI.transfer16(instruction1);
 		SPI.transfer16(instruction2);
@@ -297,7 +286,6 @@ uint8_t M95M04_t::write_idpage_array(uint32_t address, uint8_t * value_array, co
 			SPI.transfer(value_array[j]);
 		}
 		digitalWrite(CS_pin, HIGH);
-		SPI.endTransaction();
 
 		return(0);
 	}
@@ -324,7 +312,6 @@ uint8_t M95M04_t::read_idpage_array(uint32_t address, uint8_t * value_array, con
 		uint16_t instruction1, instruction2;
 		form_instructions(CMD_RDID, address, &instruction1, &instruction2);
 
-		SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 		digitalWrite(CS_pin, LOW);
 		SPI.transfer16(instruction1);
 		SPI.transfer16(instruction2);
@@ -332,7 +319,6 @@ uint8_t M95M04_t::read_idpage_array(uint32_t address, uint8_t * value_array, con
 			value_array[j] = SPI.transfer(DUMMY8_0); // dummy payload to clock data out
 		}
 		digitalWrite(CS_pin, HIGH);
-		SPI.endTransaction();
 
 		return(0);
 	}
@@ -352,13 +338,11 @@ uint8_t M95M04_t::read_idpage_lock_status(){
 	uint32_t address = 0x400; //just the A10 bit is 1
 	form_instructions(CMD_RDLS, address, &instruction1, &instruction2);
 
-	SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 	digitalWrite(CS_pin, LOW);
 	SPI.transfer16(instruction1);
 	SPI.transfer16(instruction2);
 	uint8_t scratch = SPI.transfer(DUMMY8_0);
 	digitalWrite(CS_pin, HIGH);
-	SPI.endTransaction();
 
 	return(scratch & 0b00000001); //the LSB of the received data is the lock status
 }
@@ -368,22 +352,18 @@ uint8_t M95M04_t::read_idpage_lock_status(){
 
 inline void M95M04_t::write_enable(){
 	//@TIMING: t_CHSL > 30ns, t_SLCH > 30ns
-	SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 	digitalWrite(CS_pin, LOW);
 	//@TIMING: t_DVCH > 10ns
 	SPI.transfer(CMD_WREN);
 	//@TIMING: t_CHDX > 10ns
 	digitalWrite(CS_pin, HIGH);
-	SPI.endTransaction();
 	//@TIMING: t_SHSL > 40ns
 }
 
 inline void M95M04_t::write_disable(){
-	SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 	digitalWrite(CS_pin, LOW);
 	SPI.transfer(CMD_WRDI);
 	digitalWrite(CS_pin, HIGH);
-	SPI.endTransaction();
 }
 
 /**
@@ -402,7 +382,6 @@ uint8_t M95M04_t::check_WIP(){
 	unsigned long start_time_ms;
 	uint8_t scratch;
 
-	SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 	digitalWrite(CS_pin, LOW);
 	SPI.transfer(CMD_RDSR);
 	start_time_ms = millis();
@@ -411,7 +390,6 @@ uint8_t M95M04_t::check_WIP(){
 		scratch = SPI.transfer(DUMMY8_0); // dummy to clock out data
 	} while ((bitRead(scratch, BIT_WIP) == 1) && (millis() < start_time_ms + WRITE_TIMEOUT_MS));
 	digitalWrite(CS_pin, HIGH); 
-	SPI.endTransaction();
 
 	if(bitRead(scratch, BIT_WIP) == 1){ // if we're still busy writing, something has gone wrong;
 		return(1); // timeout
@@ -436,12 +414,10 @@ uint8_t M95M04_t::software_lock_memory(uint8_t lock_level){
 	}
 
 	write_enable();
-	SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 	digitalWrite(CS_pin, LOW);
 	SPI.transfer(CMD_WRSR);
 	SPI.transfer(lock_level<<BIT_BP0);
 	digitalWrite(CS_pin, HIGH);	
-	SPI.endTransaction();
 
 	return(0);
 }
@@ -461,12 +437,11 @@ uint8_t M95M04_t::hardware_lock_memory(uint8_t lock_level){
 	}
 
 	write_enable();
-	SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 	digitalWrite(CS_pin, LOW);
 	SPI.transfer(CMD_WRSR);
 	SPI.transfer(1<<BIT_SRWD + lock_level<<BIT_BP0);
 	digitalWrite(CS_pin, HIGH);
-	SPI.endTransaction();
+
 	digitalWrite(WP_pin, LOW);
 	
 	return(0);	
@@ -480,12 +455,10 @@ uint8_t M95M04_t::unlock_memory(){
 	digitalWrite(WP_pin, HIGH);
 
 	write_enable();
-	SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 	digitalWrite(CS_pin, LOW);
 	SPI.transfer(CMD_WRSR);
 	SPI.transfer((uint8_t)0);
-	digitalWrite(CS_pin, HIGH);
-	SPI.endTransaction();	
+	digitalWrite(CS_pin, HIGH);	
 
 	return(0);
 }
