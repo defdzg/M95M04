@@ -1,4 +1,4 @@
-# Arduino library for ST Microelectronics M95M01 SPI EEPROM
+# Arduino library for ST Microelectronics M95M04 SPI EEPROM
 
 This is a simple library for the [ST Microelectronics M95M04 SPI EEPROM](https://www.st.com/en/memories/m95m04-dr.html. Forked from stefandz/M95M01
 
